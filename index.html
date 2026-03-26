@@ -304,6 +304,31 @@ input[type="text"]:focus, .mini-input:focus{border-color:#c49a63;box-shadow:0 0 
   75%{ transform:translateX(2px); }
 }
 
+.swipe-scene{padding:18px;overflow:hidden}
+.swipe-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.swipe-stage{position:relative;min-height:320px;display:grid;place-items:center;margin:8px 0 14px}
+.swipe-card{width:min(100%,560px);min-height:240px;border-radius:28px;border:2px solid #ead8c3;background:linear-gradient(180deg,#fffdf8,#f8efe2);box-shadow:0 18px 40px rgba(88,62,40,.08);position:relative;touch-action:pan-y;user-select:none;display:grid;place-items:center;padding:28px;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease, opacity .18s ease}
+.swipe-card.is-dragging{transition:none;box-shadow:0 22px 44px rgba(88,62,40,.14)}
+.swipe-card.swipe-left{border-color:rgba(164,88,70,.35)}
+.swipe-card.swipe-right{border-color:rgba(88,119,90,.4)}
+.swipe-card.fly-left{transform:translateX(-140%) rotate(-12deg);opacity:0}
+.swipe-card.fly-right{transform:translateX(140%) rotate(12deg);opacity:0}
+.swipe-card.returning{transform:translateX(0) rotate(0);opacity:1}
+.swipe-card-inner{text-align:center;max-width:28ch}
+.swipe-label{text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.swipe-statement{font-size:clamp(1.35rem,2.5vw,2rem);font-weight:800;line-height:1.35}
+.swipe-hint{position:absolute;top:18px;padding:10px 14px;border-radius:999px;font-size:.82rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;opacity:.22;pointer-events:none;border:1px solid currentColor;background:rgba(255,250,242,.9)}
+.swipe-hint-left{left:18px;color:var(--bad)}
+.swipe-hint-right{right:18px;color:var(--good)}
+.swipe-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:10px}
+.swipe-btn{min-height:58px}
+#scene4SwipeHint{margin-bottom:10px}
+@media (max-width: 860px){
+  .swipe-stage{min-height:280px}
+  .swipe-card{min-height:220px;padding:22px 18px}
+  .swipe-actions{grid-template-columns:1fr}
+}
+
 </style>
 </head>
 <body>
@@ -480,23 +505,35 @@ input[type="text"]:focus, .mini-input:focus{border-color:#c49a63;box-shadow:0 0 
 </div>
 </section>
 <section class="screen" id="scene4">
-<div class="npc"><div class="avatar">💻</div><div class="bubble">Study stop 4: You want to borrow a student laptop for focused work. Sort the statements to show how to use shared tech properly.</div></div>
-<div class="drag-layout">
-<div class="drag-pool" id="dragPool">
-<div class="drag-title">Tap or drag these statements</div>
+<div class="npc"><div class="avatar">💻</div><div class="bubble">Study stop 4: You want to borrow a student laptop for focused work. Swipe right for <strong>Allowed</strong> and left for <strong>Not allowed</strong> — or tap the buttons below if you prefer.</div></div>
+<div class="swipe-scene card">
+<div class="swipe-head">
+<div>
+<div class="small" style="font-weight:800;letter-spacing:.02em">Shared tech check</div>
+<p class="prompt" style="margin:6px 0 0">Decide whether each laptop statement is allowed or not allowed.</p>
 </div>
-<div class="drag-bin" id="binAllowed">
-<div class="drag-title">✅ Correct / allowed</div>
+<div class="chip">Card <strong id="scene4Progress">1 / 5</strong></div>
 </div>
-<div class="drag-bin" id="binNotAllowed">
-<div class="drag-title">⛔ Incorrect / not allowed</div>
+<div class="swipe-stage">
+<div class="swipe-card" id="scene4Card" aria-live="polite">
+<div class="swipe-hint swipe-hint-left">⛔ Not allowed</div>
+<div class="swipe-hint swipe-hint-right">✅ Allowed</div>
+<div class="swipe-card-inner">
+<div class="small swipe-label">Laptop rule</div>
+<div class="swipe-statement" id="scene4Statement">Laptop loan lasts 8 hours</div>
 </div>
 </div>
+</div>
+<div class="swipe-actions">
+<button class="btn btn-ghost swipe-btn" id="scene4NotAllowedBtn" type="button">⛔ Not allowed</button>
+<button class="btn btn-primary swipe-btn" id="scene4AllowedBtn" type="button">✅ Allowed</button>
+</div>
+<div class="small center" id="scene4SwipeHint">Tip: swipe the card left or right on touchscreens, or just tap a button.</div>
 <div class="feedback" id="scene4Feedback"></div>
 <div class="btn-row">
-<button class="btn btn-primary" id="scene4Check">Check sorting</button>
 <button class="btn btn-ghost" id="scene4Reveal">Reveal answers (-50)</button>
 <button class="btn btn-primary hidden" data-next="scene5" id="scene4Next">Visit the study spaces →</button>
+</div>
 </div>
 </section>
 <section class="screen" id="scene5">
@@ -709,8 +746,12 @@ window.addEventListener('load', () => {
     saved: false,
     scene3aDone: false,
     scene3bDone: false,
-    dragSelected: null,
-    dragPlacements: {},
+    scene4Index: 0,
+    scene4Wrong: 0,
+    scene4Completed: false,
+    scene4Pointer: null,
+    scene4StartX: 0,
+    scene4CurrentX: 0,
     hotspotsFound: new Set(),
     scene6Teaching: false,
     scene6Break: false,
@@ -972,90 +1013,154 @@ window.addEventListener('load', () => {
     el('scene3Next').classList.remove('hidden');
   });
 
-  // Scene 4 drag/tap sort
-  function initDragScene(){
-    const pool = el('dragPool');
-    const allowed = el('binAllowed');
-    const not = el('binNotAllowed');
-    pool.innerHTML = '<div class="drag-title">Tap or drag these statements</div>';
-    allowed.innerHTML = '<div class="drag-title">✅ Correct / allowed</div>';
-    not.innerHTML = '<div class="drag-title">⛔ Incorrect / not allowed</div>';
-    state.dragPlacements = {};
-    state.dragSelected = null;
-    dragData.forEach(item => {
-      const chip = document.createElement('div');
-      chip.className = 'drag-chip';
-      chip.id = item.id;
-      chip.draggable = true;
-      chip.textContent = item.text;
-      chip.dataset.correct = item.correct;
-      chip.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', item.id));
-      chip.addEventListener('click', e => {
-        e.stopPropagation();
-        if (state.dragSelected === item.id) { state.dragSelected = null; chip.classList.remove('selected'); return; }
-        all('.drag-chip').forEach(c => c.classList.remove('selected'));
-        state.dragSelected = item.id; chip.classList.add('selected');
-      });
-      pool.appendChild(chip);
-    });
-    ['dragPool','binAllowed','binNotAllowed'].forEach(id => {
-      const zone = el(id);
-      if (!zone.dataset.bound) {
-        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
-        zone.addEventListener('dragleave', ()=>zone.classList.remove('over'));
-        zone.addEventListener('drop', e => {
-          e.preventDefault(); zone.classList.remove('over');
-          const id = e.dataTransfer.getData('text/plain');
-          moveChip(id, zone.id);
-        });
-        zone.addEventListener('click', () => {
-          if (state.dragSelected) moveChip(state.dragSelected, zone.id);
-        });
-        zone.dataset.bound = '1';
+  // Scene 4 swipe / tap classify
+  function getScene4Item(){
+    return dragData[state.scene4Index] || null;
+  }
+
+  function updateScene4Progress(){
+    const total = dragData.length;
+    const current = Math.min(state.scene4Index + 1, total);
+    if (el('scene4Progress')) {
+      el('scene4Progress').textContent = `${current} / ${total}`;
+    }
+  }
+
+  function resetScene4CardPosition(){
+    const card = el('scene4Card');
+    if (!card) return;
+    card.style.transform = '';
+    card.classList.remove('swipe-left','swipe-right','fly-left','fly-right','is-dragging','returning');
+  }
+
+  function renderScene4Card(){
+    const item = getScene4Item();
+    const card = el('scene4Card');
+    const statement = el('scene4Statement');
+    if (!card || !statement) return;
+
+    if (!item) {
+      state.scene4Completed = true;
+      card.classList.add('hidden');
+      if (!el('scene4').dataset.done) {
+        el('scene4').dataset.done = '1';
+        markClue('scene4');
       }
-    });
-  }
-  function moveChip(chipId, zoneId){
-    const chip = el(chipId); if (!chip) return;
-    all('.drag-chip').forEach(c => c.classList.remove('selected'));
-    state.dragSelected = null;
-    el(zoneId).appendChild(chip);
-    state.dragPlacements[chipId] = zoneId === 'binAllowed' ? 'allowed' : zoneId === 'binNotAllowed' ? 'not' : 'pool';
-    ding(480,.05,'triangle',0.02);
-  }
-  el('scene4Check').addEventListener('click', () => {
-    if (el('scene4').dataset.done) return;
-    const placed = dragData.every(item => state.dragPlacements[item.id] && state.dragPlacements[item.id] !== 'pool');
-    if (!placed) {
-      showFeedback('scene4Feedback','bad','Place every statement into a column first.');
-      playBad();
+      showFeedback('scene4Feedback','good', state.scene4Wrong === 0
+        ? 'Perfect. Laptop loans are <strong>8 hours</strong>, <strong>on-campus only</strong>, limited to <strong>1 laptop per student</strong>, and the laptop must be <strong>plugged in on return</strong>.'
+        : `Task complete. You made ${state.scene4Wrong} categorisation error(s). Correct rules: <strong>8 hours</strong>, <strong>on-campus only</strong>, <strong>1 laptop per student</strong>, and <strong>return it plugged in</strong>.`);
+      el('scene4Next').classList.remove('hidden');
+      if (el('scene4AllowedBtn')) el('scene4AllowedBtn').disabled = true;
+      if (el('scene4NotAllowedBtn')) el('scene4NotAllowedBtn').disabled = true;
+      if (el('scene4SwipeHint')) el('scene4SwipeHint').textContent = 'All laptop rules checked.';
       return;
     }
-    let wrong = 0;
-    dragData.forEach(item => { if (state.dragPlacements[item.id] !== item.correct) wrong += 1; });
-    if (wrong === 0) {
+
+    card.classList.remove('hidden');
+    statement.textContent = item.text;
+    updateScene4Progress();
+    resetScene4CardPosition();
+    if (el('scene4AllowedBtn')) el('scene4AllowedBtn').disabled = false;
+    if (el('scene4NotAllowedBtn')) el('scene4NotAllowedBtn').disabled = false;
+    if (el('scene4SwipeHint')) el('scene4SwipeHint').textContent = 'Tip: swipe the card left or right on touchscreens, or just tap a button.';
+  }
+
+  function advanceScene4(){
+    state.scene4Index += 1;
+    setTimeout(() => {
+      renderScene4Card();
+    }, 220);
+  }
+
+  function answerScene4(choice){
+    if (el('scene4').dataset.done || state.scene4Completed) return;
+    const item = getScene4Item();
+    if (!item) return;
+
+    const card = el('scene4Card');
+    const isCorrect = choice === item.correct;
+
+    if (isCorrect) {
       playGood();
-      showFeedback('scene4Feedback','good','Perfect. Laptop loans are <strong>8 hours</strong>, <strong>on-campus only</strong>, limited to <strong>1 laptop per student</strong>, and the laptop must be <strong>plugged in on return</strong>.');
+      showFeedback('scene4Feedback','good', `Correct. <strong>${item.text}</strong> is ${choice === 'allowed' ? 'allowed' : 'not allowed'}.`);
     } else {
-      penalize(wrong * 10); playBad();
-      showFeedback('scene4Feedback','bad', `You sorted ${wrong} item(s) incorrectly. Correct rules: 8 hours, on-campus only, 1 laptop per student, and return it plugged in. -${wrong * 10} points.`);
+      state.scene4Wrong += 1;
+      penalize(10);
+      playBad();
+      showFeedback('scene4Feedback','bad', `Not quite. <strong>${item.text}</strong> is ${item.correct === 'allowed' ? 'allowed' : 'not allowed'}. -10 points.`);
     }
-    el('scene4').dataset.done = '1';
-    markClue('scene4');
-    el('scene4Next').classList.remove('hidden');
-    el('scene4Check').disabled = true;
-  });
-  initDragScene();
+
+    if (card) {
+      card.classList.remove('returning');
+      card.classList.add(choice === 'allowed' ? 'fly-right' : 'fly-left');
+    }
+    advanceScene4();
+  }
+
+  function bindScene4Swipe(){
+    const card = el('scene4Card');
+    if (!card || card.dataset.bound) return;
+
+    card.addEventListener('pointerdown', (ev) => {
+      if (el('scene4').dataset.done || state.scene4Completed) return;
+      state.scene4Pointer = ev.pointerId;
+      state.scene4StartX = ev.clientX;
+      state.scene4CurrentX = 0;
+      card.setPointerCapture(ev.pointerId);
+      card.classList.add('is-dragging');
+    });
+
+    card.addEventListener('pointermove', (ev) => {
+      if (state.scene4Pointer !== ev.pointerId) return;
+      state.scene4CurrentX = ev.clientX - state.scene4StartX;
+      const x = state.scene4CurrentX;
+      const rotate = x / 18;
+      card.style.transform = `translateX(${x}px) rotate(${rotate}deg)`;
+      card.classList.toggle('swipe-right', x > 40);
+      card.classList.toggle('swipe-left', x < -40);
+    });
+
+    function endSwipe(ev){
+      if (state.scene4Pointer !== ev.pointerId) return;
+      const x = state.scene4CurrentX;
+      state.scene4Pointer = null;
+      card.classList.remove('is-dragging');
+      card.releasePointerCapture?.(ev.pointerId);
+      if (x > 90) {
+        answerScene4('allowed');
+      } else if (x < -90) {
+        answerScene4('not');
+      } else {
+        card.classList.add('returning');
+        resetScene4CardPosition();
+      }
+    }
+
+    card.addEventListener('pointerup', endSwipe);
+    card.addEventListener('pointercancel', endSwipe);
+    card.dataset.bound = '1';
+  }
+
+  el('scene4AllowedBtn').addEventListener('click', () => answerScene4('allowed'));
+  el('scene4NotAllowedBtn').addEventListener('click', () => answerScene4('not'));
+
   el('scene4Reveal').addEventListener('click', () => {
     if (el('scene4').dataset.done) return;
     consumeReveal(50, 'scene4Reveal');
-    dragData.forEach(item => moveChip(item.id, item.correct === 'allowed' ? 'binAllowed' : 'binNotAllowed'));
+    state.scene4Completed = true;
     el('scene4').dataset.done = '1';
     markClue('scene4');
-    el('scene4Check').disabled = true;
-    showFeedback('scene4Feedback','good','Answers revealed: allowed/true = <strong>8 hours</strong>, <strong>on-campus only</strong>, <strong>1 laptop per student</strong>. Not allowed/false = <strong>take it home overnight</strong> and <strong>ignore plugging it in</strong>. -50 points.');
+    if (el('scene4Card')) el('scene4Card').classList.add('hidden');
+    if (el('scene4AllowedBtn')) el('scene4AllowedBtn').disabled = true;
+    if (el('scene4NotAllowedBtn')) el('scene4NotAllowedBtn').disabled = true;
+    if (el('scene4Progress')) el('scene4Progress').textContent = `${dragData.length} / ${dragData.length}`;
+    if (el('scene4SwipeHint')) el('scene4SwipeHint').textContent = 'Laptop rules revealed.';
+    showFeedback('scene4Feedback','good','Answers revealed: allowed = <strong>8 hours</strong>, <strong>on-campus only</strong>, <strong>1 laptop per student</strong>. Not allowed = <strong>take it home overnight</strong> and <strong>ignore plugging it in</strong>. -50 points.');
     el('scene4Next').classList.remove('hidden');
   });
+
+  bindScene4Swipe();
+  renderScene4Card();
 
   // Scene 5 hotspots
   all('#scene5 .violation, #scene5 .safe-item').forEach(btn => btn.addEventListener('click', () => {
@@ -1368,7 +1473,7 @@ window.addEventListener('load', () => {
       scene7AutoAdvanceTimer = null;
     }
     state.score = 700; state.clues = 0; state.saved = false; state.current = 'screen-intro';
-    state.scene3aDone = false; state.scene3bDone = false; state.dragSelected = null; state.dragPlacements = {};
+    state.scene3aDone = false; state.scene3bDone = false; state.scene4Index = 0; state.scene4Wrong = 0; state.scene4Completed = false; state.scene4Pointer = null; state.scene4StartX = 0; state.scene4CurrentX = 0;
     state.hotspotsFound = new Set(); state.scene6Teaching = false; state.scene6Break = false; state.lostPoints = 0; state.regainedPoints = 0;
     all('.screen').forEach(s => { delete s.dataset.done; });
     all('.feedback').forEach(f => { f.className = 'feedback'; f.innerHTML = ''; });
@@ -1378,7 +1483,13 @@ window.addEventListener('load', () => {
     el('playerName').value = state.player || '';
     el('nameHint').textContent = '';
     el('loanWeeks').value = ''; el('renewWeeks').value = '';
-    el('scene2Check').disabled = false; el('scene4Check').disabled = false;
+    el('scene2Check').disabled = false;
+    if (el('scene4AllowedBtn')) el('scene4AllowedBtn').disabled = false;
+    if (el('scene4NotAllowedBtn')) el('scene4NotAllowedBtn').disabled = false;
+    if (el('scene4Progress')) el('scene4Progress').textContent = `1 / ${dragData.length}`;
+    if (el('scene4Card')) el('scene4Card').classList.remove('hidden');
+    if (el('scene4SwipeHint')) el('scene4SwipeHint').textContent = 'Tip: swipe the card left or right on touchscreens, or just tap a button.';
+    renderScene4Card();
     all('.option').forEach(o => { o.disabled = false; o.classList.remove('correct','wrong','selected'); if (o.dataset.labeled) { o.textContent = o.textContent.replace(/^[0-9️⃣\s]+/, ''); delete o.dataset.labeled; } });
     all('#scene5 .violation, #scene5 .safe-item').forEach(btn => {
       const t = btn.dataset.type;
